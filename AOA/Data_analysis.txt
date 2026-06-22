@@ -1,2 +1,2 @@
 #For data analysis and SSD construction, refer to the
-#fungi file.
+#fungi folder.
