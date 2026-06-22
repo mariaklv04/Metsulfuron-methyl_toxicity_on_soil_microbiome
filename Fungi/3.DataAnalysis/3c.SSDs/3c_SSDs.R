@@ -1,3 +1,5 @@
+The construction of the SSDs have been made by 
+
 ############################################################
 ## ASV Modelling per Soil and Pesticide
 ############################################################
@@ -63,7 +65,7 @@ tax_df$ASV_ID <- rownames(tax_df)
 write_xlsx(tax_df, "taxonomy_table_ITS.xlsx")
 
 ############################################################
-## Dose–response modelling
+## Dose-response modelling
 ############################################################
 # Get unique soil types and pesticide treatments (excluding NTC)
 mysoils <- unique(sample_data(ps_tr)$Soil_Type)[which(unique(sample_data(ps)$Soil_Type) != "NTC")]
@@ -176,15 +178,14 @@ for (mysoil in mysoils) {
 
 # Close the PDF file
 dev.off()
-write.table(tab_mod_fin,file=paste("report_tr_all_4_ITS.txt",sep=""),quote=F,col.names=NA,sep="\t")
+write.table(tab_mod_fin, file = paste("report_tr_all_4_ITS.txt", sep = ""), quote = F, col.names = NA, sep = "\t")
 
 
 ############################################################
-## SSD analysis
+## SSD analysis (Model-Averaged — original approach)
 ############################################################
 mySoilPests <- unique(sample_data(myreport)$Soil_Pest)
 myEDs <- unique(sample_data(myreport)$ED) 
-
 
 # Initialize results storage
 myhc_table <- data.frame(Soil_Pest = character(), ED = character(), hc5 = numeric(), hc20 = numeric())
@@ -198,7 +199,7 @@ for(mySoilPest in mySoilPests){
                                  myreport$ED == myED, ]
     
     # Debugging
-    print(paste("Processing:", mySoilPest, "-", myED))
+    print(paste("Processing (averaged):", mySoilPest, "-", myED))
     print(head(myreport_fin_1))
     
     # Clean and ensure numeric conversion
@@ -217,11 +218,11 @@ for(mySoilPest in mySoilPests){
     # Set row names to MyFeat
     row.names(myreport_fin) <- myreport_fin$MyFeat
     
-    # Fit distributions and create CDF plots
+    # Fit distributions and create CDF plots (model-averaged)
     fits <- ssd_fit_dists(myreport_fin, left = "Estimate")
     myplot_list[[paste(mySoilPest, myED)]] <- ssd_plot_cdf(fits, label = "MyFeat")
     
-    # Calculate hazard concentrations
+    # Calculate hazard concentrations (model-averaged)
     hc <- ssd_hc(fits, percent = c(5, 20))
     myhc_tableNew <- data.frame(Soil_Pest = mySoilPest, ED = myED, hc5 = hc$est[1], hc20 = hc$est[2])
     
@@ -230,24 +231,133 @@ for(mySoilPest in mySoilPests){
   }
 }
 
-
-write.table(myhc_table, file = "HC5_values_ITS_P.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+write.table(myhc_table, file = "HC5_values_ITS_P_averaged.txt", sep = "\t", quote = FALSE, row.names = FALSE)
 
 library(gridExtra)
-ggsave(paste("SSD_plots_ITS_P.pdf",sep=""), marrangeGrob(grobs = myplot_list, layout_matrix = matrix(1:12, nrow = 4, ncol=3, byrow=TRUE)), device = "pdf", width = 14, height = 18)
-dev.off()
+ggsave("SSD_plots_ITS_P_averaged.pdf",
+       marrangeGrob(grobs = myplot_list,
+                    layout_matrix = matrix(1:12, nrow = 4, ncol = 3, byrow = TRUE)),
+       device = "pdf", width = 14, height = 18)
+
+
+############################################################
+## SSD analysis (Best-Fit Model — new approach)
+############################################################
+# Initialize results storage for best-fit model
+myhc_table_best <- data.frame(
+  Soil_Pest = character(),
+  ED = character(),
+  best_dist = character(),
+  hc5 = numeric(),
+  hc20 = numeric(),
+  stringsAsFactors = FALSE
+)
+myplot_list_best <- list()
+
+for (mySoilPest in mySoilPests) {
+  for (myED in myEDs) {
+    # Filter data for the current Soil_Pest and ED combination
+    myreport_fin_1 <- myreport[myreport$Soil_Pest == mySoilPest & 
+                                 myreport$ModRank == 1 & 
+                                 myreport$ED == myED, ]
+    
+    # Debugging
+    print(paste("Processing (best-fit):", mySoilPest, "-", myED))
+    
+    # Clean and ensure numeric conversion
+    myreport_fin_1$Estimate <- as.numeric(trimws(myreport_fin_1$Estimate))
+    myreport_fin_1 <- myreport_fin_1[!is.na(myreport_fin_1$Estimate), ]
+    myreport_fin_1 <- myreport_fin_1[!is.na(myreport_fin_1$MyFeat), ]
+    
+    # Filter Estimate values within desired range
+    myreport_fin <- myreport_fin_1[myreport_fin_1$Estimate <= 4000 & myreport_fin_1$Estimate > 0, ]
+    
+    # Check if myreport_fin is empty before proceeding
+    if (nrow(myreport_fin) == 0) next
+    
+    # Set row names to MyFeat
+    row.names(myreport_fin) <- myreport_fin$MyFeat
+    
+    # Fit all candidate distributions
+    fits <- ssd_fit_dists(myreport_fin, left = "Estimate")
+    
+    # Determine the best-fit model using goodness-of-fit (lowest AICc)
+    gof <- ssd_gof(fits)
+    gof <- gof[order(gof$aicc), ]  # Sort by AICc ascending
+    best_dist_name <- as.character(gof$dist[1])
+    
+    print(paste("  Best distribution:", best_dist_name))
+    
+    # Re-fit using only the best distribution
+    tryCatch({
+      fits_best <- ssd_fit_dists(myreport_fin, left = "Estimate", dists = best_dist_name)
+      
+      # Create CDF plot for the best-fit model
+      myplot_list_best[[paste(mySoilPest, myED)]] <- ssd_plot_cdf(fits_best, label = "MyFeat") +
+        ggtitle(paste(mySoilPest, "-", myED, "\nBest fit:", best_dist_name))
+      
+      # Calculate hazard concentrations using the best-fit model only
+      hc_best <- ssd_hc(fits_best, percent = c(5, 20))
+      myhc_tableNew_best <- data.frame(
+        Soil_Pest = mySoilPest,
+        ED = myED,
+        best_dist = best_dist_name,
+        hc5 = hc_best$est[1],
+        hc20 = hc_best$est[2],
+        stringsAsFactors = FALSE
+      )
+      
+      # Append results
+      myhc_table_best <- rbind(myhc_table_best, myhc_tableNew_best)
+      
+    }, error = function(e) {
+      print(paste("  Error fitting best model for", mySoilPest, myED, ":", e$message))
+    })
+  }
+}
+
+# Save best-fit HC results
+write.table(myhc_table_best, file = "HC5_values_ITS_P_bestfit.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+
+# Save best-fit SSD plots
+if (length(myplot_list_best) > 0) {
+  ggsave("SSD_plots_ITS_P_bestfit.pdf",
+         marrangeGrob(grobs = myplot_list_best,
+                      layout_matrix = matrix(1:12, nrow = 4, ncol = 3, byrow = TRUE)),
+         device = "pdf", width = 14, height = 18)
+}
+
+
+############################################################
+## Comparison table: Averaged vs Best-Fit HC values
+############################################################
+# Merge averaged and best-fit HC tables for easy comparison
+myhc_comparison <- merge(
+  myhc_table,
+  myhc_table_best,
+  by = c("Soil_Pest", "ED"),
+  suffixes = c("_averaged", "_bestfit")
+)
+
+write.table(myhc_comparison, file = "HC5_comparison_averaged_vs_bestfit.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+print("Comparison of averaged vs best-fit HC values:")
+print(myhc_comparison)
+
+
+############################################################
+## Detailed SSD analysis (full dataset)
+############################################################
 str(myreport_fin)
-colnames(myreport_fin) <- c("x","ID", "Microbe","ModRank","Mod","ED","Rsq", "IC", "Conc", "Std. Error", "Lower", "Upper","Phylum", "Class",	"Order",	"Family",	"Genus",	"Species")
-ompleterecords <- na.omit(myreport_fin)
+colnames(myreport_fin) <- c("x", "ID", "Microbe", "ModRank", "Mod", "ED", "Rsq", "IC", "Conc", "Std. Error", "Lower", "Upper", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+completerecords <- na.omit(myreport_fin)
 
-CNW_data <- ompleterecords
+CNW_data <- completerecords
 
-# Step 1: Fit SSD Models to Data
+# Step 1: Fit SSD Models to Data (all distributions)
 CNW_fits <- ssd_fit_dists(CNW_data, dists = ssd_dists_all())
 print(CNW_fits)
 
 # Step 2: Tidy Output for Easy Inspection
-# If tidy() fails, you can summarize manually:
 if ("tidy" %in% ls("package:ssdtools")) {
   tidy_fits <- tidy(CNW_fits) 
   print(tidy_fits)
@@ -264,16 +374,12 @@ write.table(gof_results, file = "gof_results_ITS_P.txt", sep = "\t", quote = FAL
 doFuture::registerDoFuture()
 future::plan(future::multisession)
 
-# Step 5: Generate Predictions with Confidence Intervals
+# Step 5: Generate Predictions with Confidence Intervals (model-averaged)
 CNW_preds <- predict(CNW_fits, ci = TRUE)
 print(CNW_preds)
 
-# Step 6: Optional Data for Manual Labeling (Uncomment if required)
-# x <- CNW_ED50_df$Conc  # Data for manual x-coordinates
-# y <- CNW_preds$percent # Predicted percentiles for manual labeling
-
-# Step 7: Create SSD Plot and Save to PDF
-pdf("PELLA_ITS.pdf", width = 10, height = 6) # Customize dimensions per sample
+# Step 6: Create SSD Plot (model-averaged) and Save to PDF
+pdf("PELLA_ITS_averaged.pdf", width = 10, height = 6)
 ssd_plot(
   CNW_data, CNW_preds, 
   color = "Phylum", 
@@ -281,11 +387,92 @@ ssd_plot(
   xlab = "Concentration (mg/kg soil)", 
   ribbon = TRUE
 ) +
-  expand_limits(x = 5000) + # Extend x-axis for better visualization
-  ggtitle("Fungi Sensitivity for Metsulfuron Methyl") +
-  # Uncomment next line for manual text labels
-  # geom_text(aes(x = x, y = y, label = Microbe), color = "black", hjust = -0.2) +
+  expand_limits(x = 5000) +
+  ggtitle("Fungi Sensitivity for Metsulfuron Methyl (Model-Averaged)") +
   theme_bw()
+dev.off()
+
+
+############################################################
+## Best-Fit SSD for the full dataset
+############################################################
+
+# Identify the best-fit distribution from GoF results (lowest AICc)
+gof_sorted <- gof_results[order(gof_results$aicc), ]
+best_dist_overall <- as.character(gof_sorted$dist[1])
+print(paste("Best overall distribution:", best_dist_overall))
+
+# Print the top 5 distributions for reference
+print("Top 5 distributions by AICc:")
+print(head(gof_sorted[, c("dist", "aicc", "bic", "ks", "ad")], 5))
+
+# Re-fit using only the best distribution
+CNW_fits_best <- ssd_fit_dists(CNW_data, dists = best_dist_overall)
+print(CNW_fits_best)
+
+# GoF for the best model alone
+gof_best <- ssd_gof(CNW_fits_best)
+print("Goodness-of-fit for best model:")
+print(gof_best)
+write.table(gof_best, file = "gof_results_ITS_P_bestfit.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+
+# Generate predictions with CI from the best-fit model
+CNW_preds_best <- predict(CNW_fits_best, ci = TRUE)
+print(CNW_preds_best)
+
+# Calculate HC values from the best-fit model
+CNW_hc_best <- ssd_hc(CNW_fits_best, percent = c(5, 10, 20, 50))
+print("HC values from best-fit model:")
+print(CNW_hc_best)
+write.table(as.data.frame(CNW_hc_best), file = "HC_values_bestfit_overall.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+
+# Calculate HC values from the averaged model for comparison
+CNW_hc_avg <- ssd_hc(CNW_fits, percent = c(5, 10, 20, 50))
+print("HC values from model-averaged approach:")
+print(CNW_hc_avg)
+write.table(as.data.frame(CNW_hc_avg), file = "HC_values_averaged_overall.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+
+# Create SSD Plot (best-fit model) and Save to PDF
+pdf("PELLA_ITS_bestfit.pdf", width = 10, height = 6)
+ssd_plot(
+  CNW_data, CNW_preds_best, 
+  color = "Phylum", 
+  label = "Genus", 
+  xlab = "Concentration (mg/kg soil)", 
+  ribbon = TRUE
+) +
+  expand_limits(x = 5000) +
+  ggtitle(paste("Fungi Sensitivity for Metsulfuron Methyl\n(Best-Fit:", best_dist_overall, ")")) +
+  theme_bw()
+dev.off()
+
+# Side-by-side comparison plot: averaged vs best-fit
+p_avg <- ssd_plot(
+  CNW_data, CNW_preds, 
+  color = "Phylum", 
+  label = "Genus", 
+  xlab = "Concentration (mg/kg soil)", 
+  ribbon = TRUE
+) +
+  expand_limits(x = 5000) +
+  ggtitle("Model-Averaged") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+p_best <- ssd_plot(
+  CNW_data, CNW_preds_best, 
+  color = "Phylum", 
+  label = "Genus", 
+  xlab = "Concentration (mg/kg soil)", 
+  ribbon = TRUE
+) +
+  expand_limits(x = 5000) +
+  ggtitle(paste("Best-Fit:", best_dist_overall)) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+pdf("PELLA_ITS_comparison.pdf", width = 16, height = 7)
+grid.arrange(p_avg, p_best, ncol = 2)
 dev.off()
 
 
