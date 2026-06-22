@@ -1,6 +1,6 @@
 # *** Using species sensitivity distributions to assess the toxicity of pesticides on nitrifiers and broader microbial groups: from single species tests to soil amplicon sequencing ***
 
-### By Maria Kolovou <sup>1,2+</sup>, Eleftheria Bachtsevani <sup>3</sup>, Fotios Bekris <sup>2</sup>, Alexandre Pedrinho <sup>2</sup>, Graeme W. Nicol <sup>3</sup>, Christina Hazard <sup>3</sup>, Evangelia S. Papadopoulou <sup>1*</sup>, Dimitrios G. Karpouzas <sup>2</sup>
+### By Maria Kolovou <sup>1,2+</sup>, Eleftheria Bachtsevani <sup>3</sup>, Fotios Bekris <sup>2</sup>, Alexandre Pedrinho <sup>2</sup>, Michalis Omirou <sup>4</sup>, Graeme W. Nicol <sup>3</sup>, Christina Hazard <sup>3</sup>, Evangelia S. Papadopoulou <sup>1*</sup>, Dimitrios G. Karpouzas <sup>2</sup>
 
 ### (\* corr. author)
 
@@ -11,6 +11,7 @@
 
 <sup>3</sup> Université Claude Bernard Lyon 1, CNRS, INRAE, VetAgro Sup, Laboratoire d'Ecologie Microbienne, Villeurbanne, 69622, France 
 
+<sup>4</sup> Department of Agrobiotechnology, Agricultural Research Institute, 1516, Nicosia, Cyprus
 ## The provided material includes the code used in the statistical analysis of the study.
 
 For obtaining the code the users need to open a terminal and having the [GitHub tools](https://github.com/git-guides/install-git), git-clone or download the repository, and enter the base folder. E.g:
